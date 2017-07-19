@@ -23,10 +23,10 @@
 调用例子
 
       MultiPattern patterns = new MultiPattern());
-			patterns.addPattern("敏感词", 0);
-			patterns.addPattern("红牛", 0);
-			patterns.addPattern("可乐雪碧", 0);
-			patterns.addPattern("匹配", 0);
+      patterns.addPattern("敏感词", 0);
+      patterns.addPattern("红牛", 0);
+      patterns.addPattern("可乐雪碧", 0);
+      patterns.addPattern("匹配", 0);
       
       Automation automation = patterns.toAutomation();
       patterns.close();
@@ -40,7 +40,7 @@
           }
       });
       r.close();
-      matcher.close();
+      matcher.close();
       automation.close();
       
 			
