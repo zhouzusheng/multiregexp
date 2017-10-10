@@ -49,6 +49,25 @@ public class MultiPattern  implements  AutoCloseable{
 		return false;
 	}
 	
+	/**
+	 * 增加一批pattern
+	 * @param flags
+	 * @param pats
+	 * @return
+	 * @throws RegExprException
+	 */
+	public boolean addPatterns(int flags, String... pats) throws RegExprException {
+		for(String input : pats) {
+			long v = NativeLibrary.parsePattern(input, flags);
+			if(v == 0) {
+				throw new RegExprException("invalid reg:" + input);
+			}
+			totalLength += input.length() * UTF8CharOffset.AVG_BYTE_PER_CHAR;
+			patterns.add(v);
+		}
+		return true;
+	}
+	
 	public int getTotalLength() {
 		return totalLength;
 	}

@@ -128,4 +128,18 @@ public class Automation extends Handle implements  AutoCloseable{
 		out.write(getAutomationBuffer());
 	}
 	
+	/**
+	 * 快速构造 自动机
+	 * @param flags
+	 * @param patterns
+	 * @return
+	 * @throws Exception 
+	 */
+	public static Automation fromPatterns(int flags, String... pats) throws Exception {
+		try(MultiPattern patterns = new MultiPattern()) {
+			patterns.addPatterns(flags, pats);
+			return patterns.toAutomation();
+		}
+	}
+	
 }
