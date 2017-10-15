@@ -272,7 +272,8 @@ abstract class  AbstractRHback implements HitCallback{
 	public final void match(HitItem item) {
 		item.setStart(text.charPos(item.getStart()));
 		item.setEnd(text.charPos(item.getEnd()));
-		pendingItems.put(item.getStart(), item);
+		if(validate(item))
+			pendingItems.put(item.getStart(), item);
 	}
 	
 	public final void flush(){
@@ -293,7 +294,8 @@ abstract class  AbstractRHback implements HitCallback{
 		}
 		off = end;
 	}
-	protected abstract void writeResult(HitItem item);
+	protected  boolean  validate(HitItem item) { return true;}
+	protected abstract void 	writeResult(HitItem item);
 }
 
 class RHBack extends AbstractRHback{
@@ -304,6 +306,9 @@ class RHBack extends AbstractRHback{
 		super(text, off, end, buffer);
 		this.callback = callback;
 	}
+	
+	@Override
+	protected  boolean  validate(HitItem item) { return callback.validate(item);}
 	
 	@Override
 	protected void writeResult(HitItem item) {
@@ -339,15 +344,24 @@ class MaxReplaceAction implements HitCallback{
 	HitItem pendingItem;
 	GrepString text;
 	
+	ReplaceCallback callback;
+	
 	MaxReplaceAction(GrepString text ) {
 		this.text = text;
 		pendingItem = null;
+		callback = null;
+	}
+	MaxReplaceAction(GrepString text, ReplaceCallback callback ) {
+		this.text = text;
+		pendingItem = null;
+		this.callback = callback;
 	}
 	@Override
 	public void match(HitItem item) {
 		item.setStart(text.charPos(item.getStart()));
 		item.setEnd(text.charPos(item.getEnd()));
-		pendingItem = item;
+		if(callback ==null || callback.validate(item))
+			pendingItem = item;
 	}
 
 	public void close() {

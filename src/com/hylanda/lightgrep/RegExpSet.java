@@ -132,6 +132,11 @@ public class RegExpSet implements AutoCloseable {
 				public void action(HitItem item, StringBuilder buffer) {
 					doReplace(text, item, buffer);
 				}
+
+				@Override
+				public boolean validate(HitItem item) {
+					return doValidate(item);
+				}
 			});
 		} finally {
 			try {
@@ -141,7 +146,10 @@ public class RegExpSet implements AutoCloseable {
 			}
 		}
 	}
-	
+	protected boolean doValidate(HitItem item){
+		RegExpItem regexp = patterns.get(item.getId());
+		return regexp == null || regexp.enable;
+	}
 	protected void doReplace(GrepString text, HitItem item, StringBuilder buffer) {
 		RegExpItem regexp = patterns.get(item.getId());
 		if(regexp == null || !regexp.enable) {
