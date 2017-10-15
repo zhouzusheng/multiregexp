@@ -1,5 +1,9 @@
 package com.hylanda.lightgrep;
 
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
+
 /**
  * 从 Automation 得到的 查询对象， 这个对象不是线程安全的，不可以跨线程使用
  * @author zhouzusheng
@@ -151,11 +155,9 @@ public class Matcher extends Handle implements  AutoCloseable{
 		int off = text.bytePos(pos);
 		int last = text.bytePos(end);
 		
-		RHAction rback = new RHAction(text, pos, buffer, dest);
+		RHAction rback = new RHAction(text, pos, end, buffer, dest);
 		NativeLibrary.matchText(pointer, text.pointer(), off, last, rback);
-		if(rback.lastEnd < end) {
-			buffer.append(text, rback.lastEnd, end);
-		}
+		rback.flush();
 		rback.close();
 		return buffer.toString();
 	}
@@ -176,18 +178,17 @@ public class Matcher extends Handle implements  AutoCloseable{
 		int off = text.bytePos(pos);
 		int last = text.bytePos(end);
 		
-		MaxReplaceAction rback = new MaxReplaceAction(text, pos);
+		MaxReplaceAction rback = new MaxReplaceAction(text);
 		NativeLibrary.startWithText(pointer, text.pointer(), off, last, rback);
-		if(rback.lastEnd > pos) {
+		if(rback.pendingItem!= null) {
 			buffer.append(dest);
-		}
-		if(rback.lastEnd < end) {
-			buffer.append(text, rback.lastEnd, end);
+			buffer.append(text, rback.pendingItem.getEnd(), end);
+		} else {
+			buffer.append(text, pos, end);
 		}
 		rback.close();
 		return buffer.toString();
 	}
-	
 	
 	/**
 	 * 替换文本，替换动作由 callback 决定
@@ -216,11 +217,9 @@ public class Matcher extends Handle implements  AutoCloseable{
 		int off = text.bytePos(pos);
 		int last = text.bytePos(end);
 		
-		RHBack rback = new RHBack(text, pos, buffer, callback);
+		RHBack rback = new RHBack(text, pos, end, buffer, callback);
 		NativeLibrary.matchText(pointer, text.pointer(), off, last, rback);
-		if(rback.lastEnd < end) {
-			buffer.append(text, rback.lastEnd, end);
-		}
+		rback.flush();
 		rback.close();
 		return buffer.toString();
 	}
@@ -242,101 +241,117 @@ public class Matcher extends Handle implements  AutoCloseable{
 		int off = text.bytePos(pos);
 		int last = text.bytePos(end);
 		
-		MaxReplaceAction rback = new MaxReplaceAction(text, pos);
+		MaxReplaceAction rback = new MaxReplaceAction(text);
 		NativeLibrary.startWithText(pointer, text.pointer(), off, last, rback);
-		if(rback.lastEnd > pos) {
-			HitItem itemback = new HitItem(pos, rback.lastEnd, rback.id);
-			callback.action(itemback, buffer);
-		}
-		if(rback.lastEnd < end) {
-			buffer.append(text, rback.lastEnd, end);
+		if(rback.pendingItem != null) {
+			callback.action(rback.pendingItem, buffer);
+			buffer.append(text, rback.pendingItem.getEnd(), end);
+		} else{
+			buffer.append(text, pos, end);
 		}
 		rback.close();
 		return buffer.toString();
 	}
 }
 
-class RHBack implements HitCallback{
+abstract class  AbstractRHback implements HitCallback{
 
-	int lastEnd;
 	GrepString text;
 	final StringBuilder buffer;
-	ReplaceCallback callback;
-	
-	RHBack(GrepString text, int off, StringBuilder buffer, final ReplaceCallback callback ) {
+	SortedMap<Integer, HitItem> pendingItems;
+	int off, end;
+	AbstractRHback(GrepString text, int off, int end, StringBuilder buffer) {
 		this.text = text;
 		this.buffer = buffer;
-		this.callback = callback;
-		this.lastEnd = off;
-	}
+		this.off = off;
+		this.end = end;
+		this.pendingItems = new TreeMap<Integer, HitItem>();
+	}	
+	
 	@Override
-	public void match(HitItem item) {
+	public final void match(HitItem item) {
 		item.setStart(text.charPos(item.getStart()));
 		item.setEnd(text.charPos(item.getEnd()));
-		if(item.getStart() >= lastEnd) {
-			buffer.append(text, lastEnd, item.getStart());
-			callback.action(item, buffer);
-			lastEnd = item.getEnd();
+		pendingItems.put(item.getStart(), item);
+	}
+	
+	public final void flush(){
+		int lastKey = off;
+		for(Map.Entry<Integer, HitItem> entry:pendingItems.entrySet()) {
+			HitItem item = entry.getValue();
+			if(item.getEnd() < lastKey)
+				continue;
+			if(lastKey < item.getStart()) {
+				buffer.append(text, lastKey, item.getStart());
+			}
+			writeResult(item);
+			lastKey = item.getEnd();
 		}
+		pendingItems.clear();
+		if(lastKey < end) {
+			buffer.append(text, lastKey, end);
+		}
+		off = end;
+	}
+	protected abstract void writeResult(HitItem item);
+}
+
+class RHBack extends AbstractRHback{
+	
+	ReplaceCallback callback;
+	
+	RHBack(GrepString text, int off, int end, StringBuilder buffer, final ReplaceCallback callback ) {
+		super(text, off, end, buffer);
+		this.callback = callback;
+	}
+	
+	@Override
+	protected void writeResult(HitItem item) {
+		callback.action(item, buffer);
 	}
 	
 	public void close() {
 		text = null;
 		callback = null;
+		pendingItems = null;
 	}
 	
 }
 
-class RHAction implements HitCallback{
-
-	int lastEnd;
-	GrepString text;
-	final StringBuilder buffer;
+class RHAction extends AbstractRHback{
 	final String dest;
-	RHAction(GrepString text, int off, StringBuilder buffer, final String dest ) {
-		this.text = text;
-		this.buffer = buffer;
+	RHAction(GrepString text, int off, int end, StringBuilder buffer, final String dest ) {
+		super(text, off, end, buffer);
 		this.dest = dest;
-		this.lastEnd = off;
 	}
 	@Override
-	public void match(HitItem item) {
-		item.setStart(text.charPos(item.getStart()));
-		item.setEnd(text.charPos(item.getEnd()));
-		if(item.getStart() >= lastEnd) {
-			buffer.append(text, lastEnd, item.getStart());
-			buffer.append(dest);
-			lastEnd = item.getEnd();
-		}
+	protected void writeResult(HitItem item) {
+		buffer.append(dest);
 	}
-
 	public void close() {
 		text = null;
+		pendingItems = null;
 	}
 }
 
 class MaxReplaceAction implements HitCallback{
 
-	int lastEnd;
-	int	id;
+	HitItem pendingItem;
 	GrepString text;
 	
-	MaxReplaceAction(GrepString text, int off ) {
+	MaxReplaceAction(GrepString text ) {
 		this.text = text;
-		this.lastEnd = off;
-		id = -1;
+		pendingItem = null;
 	}
 	@Override
 	public void match(HitItem item) {
 		item.setStart(text.charPos(item.getStart()));
 		item.setEnd(text.charPos(item.getEnd()));
-		if(item.getStart() >= lastEnd) {
-			lastEnd = item.getEnd();
-			id = item.getId();
-		}
+		pendingItem = item;
 	}
 
 	public void close() {
 		text = null;
+		pendingItem = null;
 	}
 }
