@@ -135,6 +135,7 @@ public class RegExpSet implements AutoCloseable {
 			});
 		} finally {
 			try {
+				text.close();
 				matcher.close();
 			} catch (Exception e) {
 			}
